@@ -24,12 +24,47 @@ proximity-chat:
   # When true, walls / mountains block chat.
   require-line-of-sight: true
 
-  # ---- Spectator handling ----
-  spectator:
-    # Spectators receive every chat message regardless of distance / walls / world.
-    # Effectively makes spectator a "monitor" mode for chat.
-    spectators-hear-all: true
+  # ---- Game-state gating ----
+  # By default the proximity filter only activates while the Manosaba game is
+  # actually running. When the game is not running (lobby / pre-start / ended),
+  # chat reverts to vanilla global delivery.
+  #
+  # Detection contract from the datapack:
+  #   scoreboard objective: 'Gaming'
+  #   score holder:         'manosaba:data' (fakeplayer)
+  #   value 1 = game running, 0 = lobby/ended, -1 = transition lock
+  game-state:
+    # If false, proximity filtering is always active regardless of game state.
+    only-during-game: true
+    # Scoreboard objective name (datapack contract).
+    objective: 'Gaming'
+    # Score holder / fakeplayer name (datapack contract).
+    holder: 'manosaba:data'
+    # Score value that means "in game".
+    in-game-value: 1
 
-    # Messages sent by a spectator are NOT delivered to non-spectator players.
-    # Other spectators (and bypass-receive holders) still receive them.
-    spectators-silenced-to-others: true
+  # ---- Dead-player handling ----
+  # A "dead" player gets two chat privileges:
+  #   - dead-hear-all       : hears every message regardless of distance / walls
+  #   - dead-silenced-to-living : their messages are hidden from alive players
+  dead:
+    # How to detect death.
+    #   scoreboard - read the datapack 'dead' dummy objective (per-player, holder = player name)
+    #                value 1 = dead, anything else / unset = alive
+    #   spectator  - GameMode.SPECTATOR is treated as dead
+    mode: scoreboard
+
+    # Players considered dead receive every chat regardless of distance / walls.
+    # Effectively makes the death state a "monitor" view.
+    dead-hear-all: true
+
+    # Messages sent by a dead player are NOT delivered to alive players.
+    # Other dead players (and bypass-receive holders) still receive them.
+    dead-silenced-to-living: true
+
+    # ---- Used only when mode == scoreboard ----
+    # Scoreboard objective name (datapack contract).
+    objective: 'dead'
+
+    # Score value that means "dead".
+    dead-value: 1

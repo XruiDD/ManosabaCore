@@ -31,7 +31,8 @@ public final class ManosabaCore extends JavaPlugin {
         }
 
         getLogger().info("ManosabaCore enabled (proximity-chat enabled=" + chatConfig.enabled()
-                + ", range=" + chatConfig.range() + ", line-of-sight=" + chatConfig.requireLineOfSight() + ").");
+                + ", range=" + chatConfig.range() + ", line-of-sight=" + chatConfig.requireLineOfSight()
+                + ", only-during-game=" + chatConfig.gameState().onlyDuringGame() + ").");
     }
 
     @Override
