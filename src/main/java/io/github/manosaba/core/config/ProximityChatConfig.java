@@ -16,18 +16,22 @@ public record ProximityChatConfig(
         double rangeSquared,
         boolean requireLineOfSight,
         @NotNull GameStateConfig gameState,
-        @NotNull DeadStateConfig deadState
+        @NotNull DeadStateConfig deadState,
+        @NotNull VoicechatConfig voicechat
 ) {
 
     public static final String SECTION = "proximity-chat";
+    public static final String VOICECHAT_SECTION = "voicechat";
 
-    public static @NotNull ProximityChatConfig fromSection(@NotNull ConfigurationSection section) {
-        boolean enabled = section.getBoolean("enabled", true);
-        double range = Math.max(0.0D, section.getDouble("range", 48.0D));
-        boolean requireLos = section.getBoolean("require-line-of-sight", true);
+    public static @NotNull ProximityChatConfig fromSection(@NotNull ConfigurationSection chatSection,
+                                                           ConfigurationSection voicechatSection) {
+        boolean enabled = chatSection.getBoolean("enabled", true);
+        double range = Math.max(0.0D, chatSection.getDouble("range", 48.0D));
+        boolean requireLos = chatSection.getBoolean("require-line-of-sight", true);
 
-        GameStateConfig gameState = GameStateConfig.fromSection(section.getConfigurationSection("game-state"));
-        DeadStateConfig deadState = DeadStateConfig.fromSection(section.getConfigurationSection("dead"));
+        GameStateConfig gameState = GameStateConfig.fromSection(chatSection.getConfigurationSection("game-state"));
+        DeadStateConfig deadState = DeadStateConfig.fromSection(chatSection.getConfigurationSection("dead"));
+        VoicechatConfig voicechat = VoicechatConfig.fromSection(voicechatSection);
 
         return new ProximityChatConfig(
                 enabled,
@@ -35,7 +39,8 @@ public record ProximityChatConfig(
                 range * range,
                 requireLos,
                 gameState,
-                deadState
+                deadState,
+                voicechat
         );
     }
 
@@ -136,6 +141,36 @@ public record ProximityChatConfig(
 
         public static @NotNull DeadStateConfig defaults() {
             return new DeadStateConfig(Mode.SCOREBOARD, true, true, "dead", 1);
+        }
+    }
+
+    /**
+     * Configuration for the Simple Voice Chat (henkelmax) integration.
+     * The integration moves dead players into a persistent ISOLATED group
+     * so they can only voice-chat with each other.
+     */
+    public record VoicechatConfig(
+            boolean enabled,
+            @NotNull String deadGroupName,
+            long syncPeriodTicks
+    ) {
+
+        public static @NotNull VoicechatConfig fromSection(ConfigurationSection section) {
+            if (section == null) {
+                return defaults();
+            }
+            boolean enabled = section.getBoolean("enabled", true);
+            String name = section.getString("dead-group-name", "Spectator");
+            long period = Math.max(1L, section.getLong("sync-period-ticks", 20L));
+            return new VoicechatConfig(
+                    enabled,
+                    name == null || name.isEmpty() ? "Spectator" : name,
+                    period
+            );
+        }
+
+        public static @NotNull VoicechatConfig defaults() {
+            return new VoicechatConfig(true, "Spectator", 20L);
         }
     }
 }

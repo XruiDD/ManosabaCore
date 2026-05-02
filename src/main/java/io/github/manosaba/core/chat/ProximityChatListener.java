@@ -2,10 +2,9 @@ package io.github.manosaba.core.chat;
 
 import io.github.manosaba.core.ManosabaCore;
 import io.github.manosaba.core.config.ProximityChatConfig;
+import io.github.manosaba.core.game.DeathStatus;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.audience.Audience;
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.ConsoleCommandSender;
@@ -14,9 +13,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.scoreboard.Objective;
-import org.bukkit.scoreboard.Score;
-import org.bukkit.scoreboard.Scoreboard;
-import org.bukkit.scoreboard.ScoreboardManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -54,7 +50,7 @@ public final class ProximityChatListener implements Listener {
         // Game-state gate: when the datapack reports the game is not running,
         // fall through to vanilla global delivery.
         ProximityChatConfig.GameStateConfig gsc = cfg.gameState();
-        if (gsc.onlyDuringGame() && !isGameRunning(gsc)) {
+        if (gsc.onlyDuringGame() && !DeathStatus.isGameRunning(gsc)) {
             return;
         }
 
@@ -68,9 +64,9 @@ public final class ProximityChatListener implements Listener {
 
         ProximityChatConfig.DeadStateConfig dsc = cfg.deadState();
         Objective deadObj = dsc.mode() == ProximityChatConfig.DeadStateConfig.Mode.SCOREBOARD
-                ? lookupObjective(dsc.objective())
+                ? DeathStatus.lookupObjective(dsc.objective())
                 : null;
-        boolean senderDead = isDead(dsc, deadObj, sender);
+        boolean senderDead = DeathStatus.isDead(sender, dsc, deadObj);
 
         Set<Audience> viewers = event.viewers();
         viewers.removeIf(audience ->
@@ -108,7 +104,7 @@ public final class ProximityChatListener implements Listener {
         }
 
         ProximityChatConfig.DeadStateConfig dsc = cfg.deadState();
-        boolean viewerDead = isDead(dsc, deadObj, viewer);
+        boolean viewerDead = DeathStatus.isDead(viewer, dsc, deadObj);
 
         // Dead sender → block delivery to alive players.
         if (dsc.deadSilencedToLiving() && senderDead && !viewerDead) {
@@ -137,46 +133,5 @@ public final class ProximityChatListener implements Listener {
         }
 
         return true;
-    }
-
-    /**
-     * Reads the datapack's {@code <holder> <objective>} score from the main
-     * scoreboard. Bukkit's scoreboard is technically not thread-safe for
-     * async access, but this is a read-only path (single map lookup + int
-     * read) which is safe enough in practice.
-     */
-    private static boolean isGameRunning(@NotNull ProximityChatConfig.GameStateConfig gsc) {
-        Objective objective = lookupObjective(gsc.objective());
-        if (objective == null) {
-            return false;
-        }
-        @SuppressWarnings("deprecation")
-        Score score = objective.getScore(gsc.holder());
-        return score.isScoreSet() && score.getScore() == gsc.inGameValue();
-    }
-
-    private static boolean isDead(@NotNull ProximityChatConfig.DeadStateConfig dsc,
-                                  @Nullable Objective deadObj,
-                                  @NotNull Player player) {
-        return switch (dsc.mode()) {
-            case SCOREBOARD -> {
-                if (deadObj == null) {
-                    yield false;
-                }
-                @SuppressWarnings("deprecation")
-                Score score = deadObj.getScore(player.getName());
-                yield score.isScoreSet() && score.getScore() == dsc.deadValue();
-            }
-            case SPECTATOR -> player.getGameMode() == GameMode.SPECTATOR;
-        };
-    }
-
-    private static @Nullable Objective lookupObjective(@NotNull String name) {
-        ScoreboardManager manager = Bukkit.getScoreboardManager();
-        if (manager == null) {
-            return null;
-        }
-        Scoreboard board = manager.getMainScoreboard();
-        return board.getObjective(name);
     }
 }

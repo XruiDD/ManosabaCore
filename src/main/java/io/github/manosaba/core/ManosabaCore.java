@@ -3,6 +3,7 @@ package io.github.manosaba.core;
 import io.github.manosaba.core.chat.ProximityChatListener;
 import io.github.manosaba.core.command.ManosabaCommand;
 import io.github.manosaba.core.config.ProximityChatConfig;
+import io.github.manosaba.core.voice.VoicechatBridge;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -13,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 public final class ManosabaCore extends JavaPlugin {
 
     private volatile ProximityChatConfig chatConfig;
+    private VoicechatBridge voicechatBridge;
 
     @Override
     public void onEnable() {
@@ -30,13 +32,21 @@ public final class ManosabaCore extends JavaPlugin {
             getLogger().warning("Command 'manosaba' is not declared in plugin.yml; /manosaba will be unavailable.");
         }
 
+        this.voicechatBridge = new VoicechatBridge(this);
+        this.voicechatBridge.enable();
+
         getLogger().info("ManosabaCore enabled (proximity-chat enabled=" + chatConfig.enabled()
                 + ", range=" + chatConfig.range() + ", line-of-sight=" + chatConfig.requireLineOfSight()
-                + ", only-during-game=" + chatConfig.gameState().onlyDuringGame() + ").");
+                + ", only-during-game=" + chatConfig.gameState().onlyDuringGame()
+                + ", voicechat=" + chatConfig.voicechat().enabled() + ").");
     }
 
     @Override
     public void onDisable() {
+        if (voicechatBridge != null) {
+            voicechatBridge.disable();
+            voicechatBridge = null;
+        }
         getLogger().info("ManosabaCore disabled.");
     }
 
@@ -48,11 +58,14 @@ public final class ManosabaCore extends JavaPlugin {
     public void reloadConfiguration() {
         reloadConfig();
         FileConfiguration root = getConfig();
-        ConfigurationSection section = root.getConfigurationSection(ProximityChatConfig.SECTION);
-        if (section == null) {
-            section = root.createSection(ProximityChatConfig.SECTION);
+
+        ConfigurationSection chatSection = root.getConfigurationSection(ProximityChatConfig.SECTION);
+        if (chatSection == null) {
+            chatSection = root.createSection(ProximityChatConfig.SECTION);
         }
-        this.chatConfig = ProximityChatConfig.fromSection(section);
+        ConfigurationSection voicechatSection = root.getConfigurationSection(ProximityChatConfig.VOICECHAT_SECTION);
+
+        this.chatConfig = ProximityChatConfig.fromSection(chatSection, voicechatSection);
     }
 
     public @Nullable ProximityChatConfig chatConfig() {

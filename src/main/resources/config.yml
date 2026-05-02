@@ -68,3 +68,25 @@ proximity-chat:
 
     # Score value that means "dead".
     dead-value: 1
+
+# -------------------------------------------------------------
+# voicechat: Simple Voice Chat (henkelmax) integration
+# -------------------------------------------------------------
+# Requires the Simple Voice Chat plugin installed alongside ManosabaCore.
+# When a player is dead (per the same dead-state config above) they are
+# moved into a persistent ISOLATED voice group; living players in the same
+# group cannot hear them and they cannot hear living players' voice.
+#
+# Note: dead-group-name and sync-period-ticks only apply on full plugin
+# (re)enable, not from /manosaba reload, because the group is built once
+# and the sync task is scheduled once.
+voicechat:
+  # Master switch. When false, no voice integration is performed even if SVC is installed.
+  enabled: true
+
+  # Display name of the group that dead players are moved into.
+  dead-group-name: 'Spectator'
+
+  # How often (in server ticks) to recheck every player's death state and
+  # move them between the dead group and "no group". 20 ticks = 1 second.
+  sync-period-ticks: 20

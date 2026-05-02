@@ -8,6 +8,7 @@ load: POSTWORLD
 prefix: ManosabaCore
 folia-supported: false
 default-permission: op
+softdepend: [voicechat]
 
 commands:
   manosaba:
