@@ -1,0 +1,31 @@
+name: ManosabaCore
+version: '${version}'
+main: io.github.manosaba.core.ManosabaCore
+description: '${description}'
+author: Manosaba
+api-version: '1.21'
+load: POSTWORLD
+prefix: ManosabaCore
+folia-supported: false
+default-permission: op
+
+commands:
+  manosaba:
+    description: ManosabaCore root command
+    usage: /<command> [reload|version|help]
+    aliases: [mc, manosabacore]
+    permission: manosaba.command
+
+permissions:
+  manosaba.command:
+    description: Use the /manosaba command (subcommands are separately permissioned).
+    default: true
+  manosaba.command.reload:
+    description: Reload ManosabaCore configuration from disk.
+    default: op
+  manosaba.chat.bypass.send:
+    description: Sender's chat ignores proximity restrictions.
+    default: false
+  manosaba.chat.bypass.receive:
+    description: Always receive proximity-restricted chat regardless of distance.
+    default: false

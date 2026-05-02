@@ -1,0 +1,35 @@
+# =============================================================
+# ManosabaCore Configuration
+# =============================================================
+# After editing, run /manosaba reload to apply changes.
+
+# -------------------------------------------------------------
+# proximity-chat: regional chat
+# Limits chat messages to nearby players only, optionally
+# blocked by solid walls between sender and receiver.
+#
+# Fixed permissions (not configurable):
+#   manosaba.chat.bypass.send    - sender ignores proximity restrictions
+#   manosaba.chat.bypass.receive - viewer always receives proximity-restricted chat
+# -------------------------------------------------------------
+proximity-chat:
+  # Master switch for the feature.
+  enabled: true
+
+  # Maximum hearing radius (in blocks). Default 48.
+  # Floats are accepted; values <= 0 disable proximity (treated as 0 -> only sender hears self).
+  range: 48.0
+
+  # Require an unobstructed line of sight between sender and receiver.
+  # When true, walls / mountains block chat.
+  require-line-of-sight: true
+
+  # ---- Spectator handling ----
+  spectator:
+    # Spectators receive every chat message regardless of distance / walls / world.
+    # Effectively makes spectator a "monitor" mode for chat.
+    spectators-hear-all: true
+
+    # Messages sent by a spectator are NOT delivered to non-spectator players.
+    # Other spectators (and bypass-receive holders) still receive them.
+    spectators-silenced-to-others: true
