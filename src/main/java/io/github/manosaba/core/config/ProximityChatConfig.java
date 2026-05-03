@@ -1,5 +1,7 @@
 package io.github.manosaba.core.config;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.configuration.ConfigurationSection;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,6 +19,8 @@ public record ProximityChatConfig(
         boolean requireLineOfSight,
         @NotNull GameStateConfig gameState,
         @NotNull DeadStateConfig deadState,
+        @NotNull ChatFormatConfig chatFormat,
+        @NotNull TalkBubblesConfig talkBubbles,
         @NotNull VoicechatConfig voicechat
 ) {
 
@@ -31,6 +35,8 @@ public record ProximityChatConfig(
 
         GameStateConfig gameState = GameStateConfig.fromSection(chatSection.getConfigurationSection("game-state"));
         DeadStateConfig deadState = DeadStateConfig.fromSection(chatSection.getConfigurationSection("dead"));
+        ChatFormatConfig chatFormat = ChatFormatConfig.fromSection(chatSection.getConfigurationSection("chat-format"));
+        TalkBubblesConfig talkBubbles = TalkBubblesConfig.fromSection(chatSection.getConfigurationSection("talkbubbles"));
         VoicechatConfig voicechat = VoicechatConfig.fromSection(voicechatSection);
 
         return new ProximityChatConfig(
@@ -40,6 +46,8 @@ public record ProximityChatConfig(
                 requireLos,
                 gameState,
                 deadState,
+                chatFormat,
+                talkBubbles,
                 voicechat
         );
     }
@@ -141,6 +149,103 @@ public record ProximityChatConfig(
 
         public static @NotNull DeadStateConfig defaults() {
             return new DeadStateConfig(Mode.SCOREBOARD, true, true, "dead", 1);
+        }
+    }
+
+    /**
+     * Full chat-line render template plus the three channel prefixes.
+     *
+     * <p>The {@link #template()} is a MiniMessage string with three
+     * placeholders that are filled in per chat event: {@code <prefix>},
+     * {@code <sender>}, {@code <message>}. The vanilla
+     * {@code chat.type.text} translation is NOT used — when this config
+     * is enabled the listener installs a renderer that fully owns the
+     * chat line.</p>
+     *
+     * <p>Prefixes are pre-parsed once and cached as {@link Component}
+     * instances to avoid re-deserialization on every chat event. The
+     * template itself is kept as a string because its placeholders need
+     * substitution at render time.</p>
+     */
+    public record ChatFormatConfig(
+            boolean enabled,
+            @NotNull String template,
+            @NotNull Component alive,
+            @NotNull Component dead,
+            @NotNull Component global,
+            @NotNull Component lobby
+    ) {
+
+        public static final String DEFAULT_TEMPLATE =
+                "<prefix><dark_gray>‹</dark_gray><sender><dark_gray>›</dark_gray> <message>";
+        public static final String DEFAULT_ALIVE  =
+                "<dark_gray>「</dark_gray><green>附近</green><dark_gray>」</dark_gray> ";
+        public static final String DEFAULT_DEAD   =
+                "<dark_gray>「</dark_gray><dark_purple>死亡</dark_purple><dark_gray>」</dark_gray> ";
+        public static final String DEFAULT_GLOBAL =
+                "<dark_gray>「</dark_gray><gold>全部</gold><dark_gray>」</dark_gray> ";
+        public static final String DEFAULT_LOBBY  =
+                "<dark_gray>「</dark_gray><aqua>大厅</aqua><dark_gray>」</dark_gray> ";
+
+        public static @NotNull ChatFormatConfig fromSection(ConfigurationSection section) {
+            if (section == null) {
+                return defaults();
+            }
+            boolean enabled = section.getBoolean("enabled", true);
+            String template = section.getString("template", DEFAULT_TEMPLATE);
+            if (template == null || template.isEmpty()) {
+                template = DEFAULT_TEMPLATE;
+            }
+            Component alive  = parse(section.getString("alive",  DEFAULT_ALIVE),  DEFAULT_ALIVE);
+            Component dead   = parse(section.getString("dead",   DEFAULT_DEAD),   DEFAULT_DEAD);
+            Component global = parse(section.getString("global", DEFAULT_GLOBAL), DEFAULT_GLOBAL);
+            Component lobby  = parse(section.getString("lobby",  DEFAULT_LOBBY),  DEFAULT_LOBBY);
+            return new ChatFormatConfig(enabled, template, alive, dead, global, lobby);
+        }
+
+        public static @NotNull ChatFormatConfig defaults() {
+            return new ChatFormatConfig(
+                    true,
+                    DEFAULT_TEMPLATE,
+                    parse(DEFAULT_ALIVE,  DEFAULT_ALIVE),
+                    parse(DEFAULT_DEAD,   DEFAULT_DEAD),
+                    parse(DEFAULT_GLOBAL, DEFAULT_GLOBAL),
+                    parse(DEFAULT_LOBBY,  DEFAULT_LOBBY)
+            );
+        }
+
+        private static @NotNull Component parse(String raw, @NotNull String fallback) {
+            if (raw == null || raw.isEmpty()) {
+                return Component.empty();
+            }
+            try {
+                return MiniMessage.miniMessage().deserialize(raw);
+            } catch (RuntimeException ex) {
+                return MiniMessage.miniMessage().deserialize(fallback);
+            }
+        }
+    }
+
+    /**
+     * Configuration for the TalkBubbles (Fabric) client mod integration.
+     * The plugin always sends the raw, un-prefixed message text via the
+     * mod's plugin-message channel — vanilla clients are silently skipped
+     * because they do not register the channel during the
+     * {@code minecraft:register} handshake.
+     */
+    public record TalkBubblesConfig(
+            boolean enabled
+    ) {
+
+        public static @NotNull TalkBubblesConfig fromSection(ConfigurationSection section) {
+            if (section == null) {
+                return defaults();
+            }
+            return new TalkBubblesConfig(section.getBoolean("enabled", true));
+        }
+
+        public static @NotNull TalkBubblesConfig defaults() {
+            return new TalkBubblesConfig(true);
         }
     }
 

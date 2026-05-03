@@ -3,7 +3,9 @@ package io.github.manosaba.core;
 import io.github.manosaba.core.chat.ProximityChatListener;
 import io.github.manosaba.core.command.ManosabaCommand;
 import io.github.manosaba.core.config.ProximityChatConfig;
+import io.github.manosaba.core.talkbubbles.TalkBubblesBridge;
 import io.github.manosaba.core.voice.VoicechatBridge;
+import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -20,6 +22,17 @@ public final class ManosabaCore extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
         reloadConfiguration();
+
+        // Outgoing: lets the server actually send the bubble packet.
+        Bukkit.getMessenger().registerOutgoingPluginChannel(this, TalkBubblesBridge.CHANNEL);
+        // Incoming (no-op handler): Bukkit only advertises a channel to clients via
+        // the vanilla 'minecraft:register' handshake packet when it is registered as
+        // INCOMING. Without this, the TalkBubbles mod's ClientPlayNetworking.canSend
+        // check returns false and the client falls back to its legacy chat-text path.
+        Bukkit.getMessenger().registerIncomingPluginChannel(this, TalkBubblesBridge.CHANNEL,
+                (channel, player, message) -> {
+                    // Server is S2C-only for this protocol; ignore any C2S traffic.
+                });
 
         getServer().getPluginManager().registerEvents(new ProximityChatListener(this), this);
 
@@ -47,6 +60,8 @@ public final class ManosabaCore extends JavaPlugin {
             voicechatBridge.disable();
             voicechatBridge = null;
         }
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(this, TalkBubblesBridge.CHANNEL);
+        Bukkit.getMessenger().unregisterOutgoingPluginChannel(this, TalkBubblesBridge.CHANNEL);
         getLogger().info("ManosabaCore disabled.");
     }
 

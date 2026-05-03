@@ -69,6 +69,45 @@ proximity-chat:
     # Score value that means "dead".
     dead-value: 1
 
+  # ---- Chat formatting (full renderer) ----
+  # When enabled, ManosabaCore takes complete control of the chat line
+  # rendering — the vanilla "<name> message" format is NOT used. The
+  # `template` below is rendered for each chat message with three
+  # MiniMessage placeholders substituted in:
+  #
+  #   <prefix>  - channel tag chosen from { alive, dead, global, lobby } below
+  #               (alive   = sender is alive)
+  #               (dead    = sender is dead)
+  #               (global  = sender holds manosaba.chat.bypass.send)
+  #               (lobby   = game-state gate is on but the game is not running;
+  #                          everyone hears everyone, prefix marks the channel)
+  #   <sender>  - sender's display name (other plugins' prefixes/colors apply)
+  #   <message> - the typed message
+  #
+  # MiniMessage syntax: https://docs.advntr.dev/minimessage/
+  # Set enabled: false to skip the renderer entirely (vanilla rendering).
+  chat-format:
+    enabled: true
+
+    template: '<prefix><dark_gray>‹</dark_gray><sender><dark_gray>›</dark_gray> <message>'
+
+    # Channel prefix substituted into <prefix> above. Empty string drops it.
+    alive:  '<dark_gray>「</dark_gray><green>附近</green><dark_gray>」</dark_gray> '
+    dead:   '<dark_gray>「</dark_gray><dark_purple>死亡</dark_purple><dark_gray>」</dark_gray> '
+    global: '<dark_gray>「</dark_gray><gold>全部</gold><dark_gray>」</dark_gray> '
+    lobby:  '<dark_gray>「</dark_gray><aqua>大厅</aqua><dark_gray>」</dark_gray> '
+
+  # ---- TalkBubbles (Fabric client mod) integration ----
+  # When enabled, the plugin emits a 'talkbubbles:bubble' plugin message for
+  # every chat event carrying the player's RAW typed text (so the channel
+  # prefix added by chat-format above does NOT show inside the bubble).
+  # The bubble is only delivered to clients that registered the channel
+  # during the vanilla minecraft:register handshake — vanilla clients are
+  # silently skipped and can join the server normally without the mod.
+  # Bubble proximity uses the same range / line-of-sight as proximity-chat.
+  talkbubbles:
+    enabled: true
+
 # -------------------------------------------------------------
 # voicechat: Simple Voice Chat (henkelmax) integration
 # -------------------------------------------------------------
