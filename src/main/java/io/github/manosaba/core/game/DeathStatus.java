@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Shared helpers for reading the Manosaba datapack-managed scoreboard state
- * (game-running, per-player dead) from Bukkit.
+ * (game-running, per-player dead, per-player Playing) from Bukkit.
  *
  * <p>All reads go through the main scoreboard. Bukkit's scoreboard is not
  * formally thread-safe; these methods perform a single objective lookup +
@@ -58,5 +58,41 @@ public final class DeathStatus {
             }
             case SPECTATOR -> player.getGameMode() == GameMode.SPECTATOR;
         };
+    }
+
+    /**
+     * Whether {@code player} is actively participating in the current round.
+     *
+     * <p>When the {@code playing} feature is disabled, or the datapack
+     * objective is missing, the method returns {@code true} (permissive
+     * fallback so chat keeps working without the datapack).</p>
+     */
+    public static boolean isPlaying(@NotNull Player player,
+                                    @NotNull ProximityChatConfig.PlayingStateConfig psc,
+                                    @Nullable Objective playingObj) {
+        if (!psc.enabled()) {
+            return true;
+        }
+        if (playingObj == null) {
+            return true;
+        }
+        @SuppressWarnings("deprecation")
+        Score score = playingObj.getScore(player.getName());
+        return score.isScoreSet() && score.getScore() == psc.playingValue();
+    }
+
+    /**
+     * Whether {@code player} should sit in the voicechat spectator group.
+     * True when the player is dead OR not actively playing the round.
+     */
+    public static boolean isInSpectatorPool(@NotNull Player player,
+                                            @NotNull ProximityChatConfig.DeadStateConfig dsc,
+                                            @Nullable Objective deadObj,
+                                            @NotNull ProximityChatConfig.PlayingStateConfig psc,
+                                            @Nullable Objective playingObj) {
+        if (isDead(player, dsc, deadObj)) {
+            return true;
+        }
+        return !isPlaying(player, psc, playingObj);
     }
 }

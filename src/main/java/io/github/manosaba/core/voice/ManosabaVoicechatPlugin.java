@@ -129,6 +129,8 @@ public final class ManosabaVoicechatPlugin implements VoicechatPlugin {
         Objective deadObj = dsc.mode() == ProximityChatConfig.DeadStateConfig.Mode.SCOREBOARD
                 ? DeathStatus.lookupObjective(dsc.objective())
                 : null;
+        ProximityChatConfig.PlayingStateConfig psc = cfg.playingState();
+        Objective playingObj = psc.enabled() ? DeathStatus.lookupObjective(psc.objective()) : null;
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             VoicechatConnection conn = api.getConnectionOf(player.getUniqueId());
@@ -136,13 +138,14 @@ public final class ManosabaVoicechatPlugin implements VoicechatPlugin {
                 continue;
             }
 
-            boolean dead = DeathStatus.isDead(player, dsc, deadObj);
+            // Spectator pool = dead OR not-actively-playing this round.
+            boolean inSpectatorPool = DeathStatus.isInSpectatorPool(player, dsc, deadObj, psc, playingObj);
             Group current = conn.getGroup();
             boolean inDeadGroup = current != null && current.getId().equals(group.getId());
 
-            if (dead && !inDeadGroup) {
+            if (inSpectatorPool && !inDeadGroup) {
                 conn.setGroup(group);
-            } else if (!dead && inDeadGroup) {
+            } else if (!inSpectatorPool && inDeadGroup) {
                 conn.setGroup(null);
             }
         }

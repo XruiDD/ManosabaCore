@@ -28,12 +28,10 @@ import java.util.UUID;
 /**
  * Filters {@link AsyncChatEvent#viewers()} so that a chat message is only
  * delivered to players within configured range of the sender, optionally
- * gated by line-of-sight, the datapack-reported "game running" flag, and
- * the per-player "dead" scoreboard. Also installs a {@link ChatRenderer}
- * that fully owns the chat-line render, building it from a configurable
- * MiniMessage template with three placeholders ({@code <prefix>},
- * {@code <sender>}, {@code <message>}) — the vanilla
- * {@code chat.type.text} translation is not used.
+ * gated by line-of-sight, the datapack-reported "game running" flag, the
+ * per-player "dead" scoreboard, and the per-player "Playing" scoreboard
+ * (observer = non-Playing while game is running). Also installs a
+ * {@link ChatRenderer} that fully owns the chat-line render.
  */
 public final class ProximityChatListener implements Listener {
 
@@ -42,12 +40,14 @@ public final class ProximityChatListener implements Listener {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** Which prefix variant to use for a given chat event. */
+    /** Which prefix variant + delivery rules to use for a given chat event. */
     private enum Channel {
-        /** Sender is alive; viewers are filtered by world / range / line-of-sight / dead rules. */
+        /** Sender is active and alive. Viewers filtered by world/range/LoS, dead-state rules apply. */
         ALIVE,
-        /** Sender is dead; subject to dead-state rules (silenced to living, etc.). */
+        /** Sender is active but dead. Subject to dead-state rules (silenced to living, etc.). */
         DEAD,
+        /** Sender is non-Playing during a running round. Reaches other observers only. */
+        OBSERVER,
         /** Sender holds {@link #PERMISSION_BYPASS_SEND}; everyone hears, no viewer filtering. */
         GLOBAL,
         /** Game-state gate is on but the game is not running; everyone hears, no viewer filtering. */
@@ -84,9 +84,22 @@ public final class ProximityChatListener implements Listener {
         Objective deadObj = dsc.mode() == ProximityChatConfig.DeadStateConfig.Mode.SCOREBOARD
                 ? DeathStatus.lookupObjective(dsc.objective())
                 : null;
-        boolean senderDead = !bypassSend && DeathStatus.isDead(sender, dsc, deadObj);
+        ProximityChatConfig.PlayingStateConfig psc = cfg.playingState();
+        Objective playingObj = psc.enabled() ? DeathStatus.lookupObjective(psc.objective()) : null;
 
-        Channel channel = bypassSend ? Channel.GLOBAL : (senderDead ? Channel.DEAD : Channel.ALIVE);
+        boolean senderPlaying = bypassSend || DeathStatus.isPlaying(sender, psc, playingObj);
+        boolean senderDead = !bypassSend && senderPlaying && DeathStatus.isDead(sender, dsc, deadObj);
+
+        Channel channel;
+        if (bypassSend) {
+            channel = Channel.GLOBAL;
+        } else if (!senderPlaying) {
+            channel = Channel.OBSERVER;
+        } else if (senderDead) {
+            channel = Channel.DEAD;
+        } else {
+            channel = Channel.ALIVE;
+        }
         installRenderer(event, cfg.chatFormat(), channel);
 
         if (bypassSend) {
@@ -98,8 +111,9 @@ public final class ProximityChatListener implements Listener {
         World senderWorld = senderLoc.getWorld();
 
         Set<Audience> viewers = event.viewers();
-        viewers.removeIf(audience ->
-                !shouldDeliver(audience, sender, senderLoc, senderWorld, cfg, deadObj, senderDead));
+        viewers.removeIf(audience -> !shouldDeliver(
+                audience, sender, senderLoc, senderWorld,
+                cfg, deadObj, playingObj, senderDead, senderPlaying));
 
         emitBubbles(event, cfg, sender);
     }
@@ -177,10 +191,11 @@ public final class ProximityChatListener implements Listener {
     private static @NotNull Component pickPrefix(@NotNull ProximityChatConfig.ChatFormatConfig fmt,
                                                  @NotNull Channel channel) {
         return switch (channel) {
-            case ALIVE  -> fmt.alive();
-            case DEAD   -> fmt.dead();
-            case GLOBAL -> fmt.global();
-            case LOBBY  -> fmt.lobby();
+            case ALIVE    -> fmt.alive();
+            case DEAD     -> fmt.dead();
+            case OBSERVER -> fmt.observer();
+            case GLOBAL   -> fmt.global();
+            case LOBBY    -> fmt.lobby();
         };
     }
 
@@ -190,9 +205,12 @@ public final class ProximityChatListener implements Listener {
                                   @NotNull World senderWorld,
                                   @NotNull ProximityChatConfig cfg,
                                   @Nullable Objective deadObj,
-                                  boolean senderDead) {
+                                  @Nullable Objective playingObj,
+                                  boolean senderDead,
+                                  boolean senderPlaying) {
         if (audience instanceof Player viewer) {
-            return shouldDeliverToPlayer(viewer, sender, senderLoc, senderWorld, cfg, deadObj, senderDead);
+            return shouldDeliverToPlayer(viewer, sender, senderLoc, senderWorld,
+                    cfg, deadObj, playingObj, senderDead, senderPlaying);
         }
         if (audience instanceof ConsoleCommandSender) {
             return true;
@@ -206,7 +224,9 @@ public final class ProximityChatListener implements Listener {
                                           @NotNull World senderWorld,
                                           @NotNull ProximityChatConfig cfg,
                                           @Nullable Objective deadObj,
-                                          boolean senderDead) {
+                                          @Nullable Objective playingObj,
+                                          boolean senderDead,
+                                          boolean senderPlaying) {
         if (viewer.getUniqueId().equals(sender.getUniqueId())) {
             return true;
         }
@@ -215,17 +235,26 @@ public final class ProximityChatListener implements Listener {
         }
 
         ProximityChatConfig.DeadStateConfig dsc = cfg.deadState();
-        boolean viewerDead = DeathStatus.isDead(viewer, dsc, deadObj);
+        ProximityChatConfig.PlayingStateConfig psc = cfg.playingState();
+        boolean senderInPool = !senderPlaying || senderDead;
+        boolean viewerInPool = DeathStatus.isInSpectatorPool(viewer, dsc, deadObj, psc, playingObj);
 
-        // Dead sender → block delivery to alive players.
-        if (dsc.deadSilencedToLiving() && senderDead && !viewerDead) {
-            return false;
-        }
-        // Dead viewer → always hear (bypass world / distance / LoS).
-        if (dsc.deadHearAll() && viewerDead) {
+        // Within the unified spectator pool: free chat, no proximity check.
+        if (senderInPool && viewerInPool) {
             return true;
         }
 
+        // Sender in pool → active viewer: silenced by spectators-silenced-to-active.
+        if (senderInPool /* && !viewerInPool */) {
+            return !cfg.spectatorsSilencedToActive();
+        }
+
+        // Active sender → viewer in pool: gated by spectators-hear-all (bypasses range/LoS).
+        if (/* !senderInPool && */ viewerInPool) {
+            return cfg.spectatorsHearAll();
+        }
+
+        // Both active alive → proximity / world / LoS.
         Location viewerLoc = viewer.getLocation();
         if (!senderWorld.getUID().equals(viewerLoc.getWorld().getUID())) {
             return false;

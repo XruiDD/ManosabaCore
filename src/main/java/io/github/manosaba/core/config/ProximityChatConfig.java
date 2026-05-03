@@ -17,8 +17,11 @@ public record ProximityChatConfig(
         double range,
         double rangeSquared,
         boolean requireLineOfSight,
+        boolean spectatorsHearAll,
+        boolean spectatorsSilencedToActive,
         @NotNull GameStateConfig gameState,
         @NotNull DeadStateConfig deadState,
+        @NotNull PlayingStateConfig playingState,
         @NotNull ChatFormatConfig chatFormat,
         @NotNull TalkBubblesConfig talkBubbles,
         @NotNull VoicechatConfig voicechat
@@ -32,9 +35,12 @@ public record ProximityChatConfig(
         boolean enabled = chatSection.getBoolean("enabled", true);
         double range = Math.max(0.0D, chatSection.getDouble("range", 48.0D));
         boolean requireLos = chatSection.getBoolean("require-line-of-sight", true);
+        boolean spectatorsHearAll = chatSection.getBoolean("spectators-hear-all", true);
+        boolean spectatorsSilenced = chatSection.getBoolean("spectators-silenced-to-active", true);
 
         GameStateConfig gameState = GameStateConfig.fromSection(chatSection.getConfigurationSection("game-state"));
         DeadStateConfig deadState = DeadStateConfig.fromSection(chatSection.getConfigurationSection("dead"));
+        PlayingStateConfig playingState = PlayingStateConfig.fromSection(chatSection.getConfigurationSection("playing"));
         ChatFormatConfig chatFormat = ChatFormatConfig.fromSection(chatSection.getConfigurationSection("chat-format"));
         TalkBubblesConfig talkBubbles = TalkBubblesConfig.fromSection(chatSection.getConfigurationSection("talkbubbles"));
         VoicechatConfig voicechat = VoicechatConfig.fromSection(voicechatSection);
@@ -44,8 +50,11 @@ public record ProximityChatConfig(
                 range,
                 range * range,
                 requireLos,
+                spectatorsHearAll,
+                spectatorsSilenced,
                 gameState,
                 deadState,
+                playingState,
                 chatFormat,
                 talkBubbles,
                 voicechat
@@ -107,8 +116,6 @@ public record ProximityChatConfig(
      */
     public record DeadStateConfig(
             @NotNull Mode mode,
-            boolean deadHearAll,
-            boolean deadSilencedToLiving,
             @NotNull String objective,
             int deadValue
     ) {
@@ -134,21 +141,56 @@ public record ProximityChatConfig(
                 return defaults();
             }
             Mode mode = Mode.parse(section.getString("mode", "scoreboard"), Mode.SCOREBOARD);
-            boolean hearAll = section.getBoolean("dead-hear-all", true);
-            boolean silenced = section.getBoolean("dead-silenced-to-living", true);
             String objective = section.getString("objective", "dead");
             int deadValue = section.getInt("dead-value", 1);
             return new DeadStateConfig(
                     mode,
-                    hearAll,
-                    silenced,
                     objective == null || objective.isEmpty() ? "dead" : objective,
                     deadValue
             );
         }
 
         public static @NotNull DeadStateConfig defaults() {
-            return new DeadStateConfig(Mode.SCOREBOARD, true, true, "dead", 1);
+            return new DeadStateConfig(Mode.SCOREBOARD, "dead", 1);
+        }
+    }
+
+    /**
+     * Configuration for the per-player "actively playing this round" status.
+     *
+     * <p>Datapack contract:
+     * <ul>
+     *   <li>objective {@code Playing} (dummy, per-player), holder = player name</li>
+     *   <li>{@code 1} = actively in this round</li>
+     *   <li>{@code 0} = not in round (lobby idle / mid-join / didn't ready)</li>
+     *   <li>{@code 2} = lobby minigame (separate state machine)</li>
+     * </ul>
+     * Players whose score does NOT equal {@link #playingValue()} are
+     * "observers": they get the observer chat channel and join the same
+     * voicechat spectator group as dead players.
+     */
+    public record PlayingStateConfig(
+            boolean enabled,
+            @NotNull String objective,
+            int playingValue
+    ) {
+
+        public static @NotNull PlayingStateConfig fromSection(ConfigurationSection section) {
+            if (section == null) {
+                return defaults();
+            }
+            boolean enabled = section.getBoolean("enabled", true);
+            String objective = section.getString("objective", "Playing");
+            int value = section.getInt("playing-value", 1);
+            return new PlayingStateConfig(
+                    enabled,
+                    objective == null || objective.isEmpty() ? "Playing" : objective,
+                    value
+            );
+        }
+
+        public static @NotNull PlayingStateConfig defaults() {
+            return new PlayingStateConfig(true, "Playing", 1);
         }
     }
 
@@ -172,19 +214,22 @@ public record ProximityChatConfig(
             @NotNull String template,
             @NotNull Component alive,
             @NotNull Component dead,
+            @NotNull Component observer,
             @NotNull Component global,
             @NotNull Component lobby
     ) {
 
         public static final String DEFAULT_TEMPLATE =
-                "<prefix><dark_gray>‹</dark_gray><sender><dark_gray>›</dark_gray> <message>";
-        public static final String DEFAULT_ALIVE  =
+                "<prefix><sender><dark_gray> » </dark_gray><message>";
+        public static final String DEFAULT_ALIVE    =
                 "<dark_gray>「</dark_gray><green>附近</green><dark_gray>」</dark_gray> ";
-        public static final String DEFAULT_DEAD   =
+        public static final String DEFAULT_DEAD     =
                 "<dark_gray>「</dark_gray><dark_purple>死亡</dark_purple><dark_gray>」</dark_gray> ";
-        public static final String DEFAULT_GLOBAL =
+        public static final String DEFAULT_OBSERVER =
+                "<dark_gray>「</dark_gray><gray>旁观</gray><dark_gray>」</dark_gray> ";
+        public static final String DEFAULT_GLOBAL   =
                 "<dark_gray>「</dark_gray><gold>全部</gold><dark_gray>」</dark_gray> ";
-        public static final String DEFAULT_LOBBY  =
+        public static final String DEFAULT_LOBBY    =
                 "<dark_gray>「</dark_gray><aqua>大厅</aqua><dark_gray>」</dark_gray> ";
 
         public static @NotNull ChatFormatConfig fromSection(ConfigurationSection section) {
@@ -196,21 +241,23 @@ public record ProximityChatConfig(
             if (template == null || template.isEmpty()) {
                 template = DEFAULT_TEMPLATE;
             }
-            Component alive  = parse(section.getString("alive",  DEFAULT_ALIVE),  DEFAULT_ALIVE);
-            Component dead   = parse(section.getString("dead",   DEFAULT_DEAD),   DEFAULT_DEAD);
-            Component global = parse(section.getString("global", DEFAULT_GLOBAL), DEFAULT_GLOBAL);
-            Component lobby  = parse(section.getString("lobby",  DEFAULT_LOBBY),  DEFAULT_LOBBY);
-            return new ChatFormatConfig(enabled, template, alive, dead, global, lobby);
+            Component alive    = parse(section.getString("alive",    DEFAULT_ALIVE),    DEFAULT_ALIVE);
+            Component dead     = parse(section.getString("dead",     DEFAULT_DEAD),     DEFAULT_DEAD);
+            Component observer = parse(section.getString("observer", DEFAULT_OBSERVER), DEFAULT_OBSERVER);
+            Component global   = parse(section.getString("global",   DEFAULT_GLOBAL),   DEFAULT_GLOBAL);
+            Component lobby    = parse(section.getString("lobby",    DEFAULT_LOBBY),    DEFAULT_LOBBY);
+            return new ChatFormatConfig(enabled, template, alive, dead, observer, global, lobby);
         }
 
         public static @NotNull ChatFormatConfig defaults() {
             return new ChatFormatConfig(
                     true,
                     DEFAULT_TEMPLATE,
-                    parse(DEFAULT_ALIVE,  DEFAULT_ALIVE),
-                    parse(DEFAULT_DEAD,   DEFAULT_DEAD),
-                    parse(DEFAULT_GLOBAL, DEFAULT_GLOBAL),
-                    parse(DEFAULT_LOBBY,  DEFAULT_LOBBY)
+                    parse(DEFAULT_ALIVE,    DEFAULT_ALIVE),
+                    parse(DEFAULT_DEAD,     DEFAULT_DEAD),
+                    parse(DEFAULT_OBSERVER, DEFAULT_OBSERVER),
+                    parse(DEFAULT_GLOBAL,   DEFAULT_GLOBAL),
+                    parse(DEFAULT_LOBBY,    DEFAULT_LOBBY)
             );
         }
 

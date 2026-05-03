@@ -24,6 +24,24 @@ proximity-chat:
   # When true, walls / mountains block chat.
   require-line-of-sight: true
 
+  # ---- Spectator pool ----
+  # Dead players and non-Playing observers form ONE unified "spectator pool":
+  # they freely chat with each other (no distance / wall checks among them),
+  # share the same voicechat group, and follow the two policies below toward
+  # active players.
+  #
+  # Sender side ↓
+  #   - active alive : normal proximity rules among active; reaches spectator
+  #                    pool only if spectators-hear-all is true
+  #   - active dead  : reaches active alive only if !spectators-silenced-to-active;
+  #                    always reaches the spectator pool
+  #   - observer     : symmetric to active-dead from the active side's POV
+  #
+  # Detection (which players belong to which side) is configured separately
+  # in the `dead` and `playing` sections below.
+  spectators-hear-all: true
+  spectators-silenced-to-active: true
+
   # ---- Game-state gating ----
   # By default the proximity filter only activates while the Manosaba game is
   # actually running. When the game is not running (lobby / pre-start / ended),
@@ -43,24 +61,15 @@ proximity-chat:
     # Score value that means "in game".
     in-game-value: 1
 
-  # ---- Dead-player handling ----
-  # A "dead" player gets two chat privileges:
-  #   - dead-hear-all       : hears every message regardless of distance / walls
-  #   - dead-silenced-to-living : their messages are hidden from alive players
+  # ---- Dead-player detection ----
+  # Selects players for the spectator pool by death state.
+  # The chat policy itself is `proximity-chat.spectators-*` above.
   dead:
     # How to detect death.
     #   scoreboard - read the datapack 'dead' dummy objective (per-player, holder = player name)
     #                value 1 = dead, anything else / unset = alive
     #   spectator  - GameMode.SPECTATOR is treated as dead
     mode: scoreboard
-
-    # Players considered dead receive every chat regardless of distance / walls.
-    # Effectively makes the death state a "monitor" view.
-    dead-hear-all: true
-
-    # Messages sent by a dead player are NOT delivered to alive players.
-    # Other dead players (and bypass-receive holders) still receive them.
-    dead-silenced-to-living: true
 
     # ---- Used only when mode == scoreboard ----
     # Scoreboard objective name (datapack contract).
@@ -69,18 +78,38 @@ proximity-chat:
     # Score value that means "dead".
     dead-value: 1
 
+  # ---- Playing-state detection ----
+  # Selects non-Playing players for the spectator pool.
+  # The chat policy itself is `proximity-chat.spectators-*` above.
+  #
+  # Datapack 'Playing' dummy objective values:
+  #   1 = actively in this round (game_start promotes ready=1 -> Playing=1)
+  #   0 = not in this round (lobby idle / mid-join / didn't ready up)
+  #   2 = playing the lobby minigame (separate state machine)
+  playing:
+    # When false, the Playing check is skipped entirely (everyone is treated
+    # as actively playing — only the dead/alive distinction remains).
+    enabled: true
+
+    # Scoreboard objective name (datapack contract).
+    objective: 'Playing'
+
+    # Score value that means "actively playing this round".
+    playing-value: 1
+
   # ---- Chat formatting (full renderer) ----
   # When enabled, ManosabaCore takes complete control of the chat line
   # rendering — the vanilla "<name> message" format is NOT used. The
   # `template` below is rendered for each chat message with three
   # MiniMessage placeholders substituted in:
   #
-  #   <prefix>  - channel tag chosen from { alive, dead, global, lobby } below
-  #               (alive   = sender is alive)
-  #               (dead    = sender is dead)
-  #               (global  = sender holds manosaba.chat.bypass.send)
-  #               (lobby   = game-state gate is on but the game is not running;
-  #                          everyone hears everyone, prefix marks the channel)
+  #   <prefix>  - channel tag chosen from { alive, dead, observer, global, lobby } below
+  #               (alive    = sender is active and alive)
+  #               (dead     = sender is active but dead)
+  #               (observer = sender is non-Playing during a running round)
+  #               (global   = sender holds manosaba.chat.bypass.send)
+  #               (lobby    = game-state gate is on but the game is not running;
+  #                           everyone hears everyone, prefix marks the channel)
   #   <sender>  - sender's display name (other plugins' prefixes/colors apply)
   #   <message> - the typed message
   #
@@ -89,13 +118,14 @@ proximity-chat:
   chat-format:
     enabled: true
 
-    template: '<prefix><dark_gray>‹</dark_gray><sender><dark_gray>›</dark_gray> <message>'
+    template: '<prefix><sender><dark_gray> » </dark_gray><message>'
 
     # Channel prefix substituted into <prefix> above. Empty string drops it.
-    alive:  '<dark_gray>「</dark_gray><green>附近</green><dark_gray>」</dark_gray> '
-    dead:   '<dark_gray>「</dark_gray><dark_purple>死亡</dark_purple><dark_gray>」</dark_gray> '
-    global: '<dark_gray>「</dark_gray><gold>全部</gold><dark_gray>」</dark_gray> '
-    lobby:  '<dark_gray>「</dark_gray><aqua>大厅</aqua><dark_gray>」</dark_gray> '
+    alive:    '<dark_gray>「</dark_gray><green>附近</green><dark_gray>」</dark_gray> '
+    dead:     '<dark_gray>「</dark_gray><dark_purple>死亡</dark_purple><dark_gray>」</dark_gray> '
+    observer: '<dark_gray>「</dark_gray><gray>旁观</gray><dark_gray>」</dark_gray> '
+    global:   '<dark_gray>「</dark_gray><gold>全部</gold><dark_gray>」</dark_gray> '
+    lobby:    '<dark_gray>「</dark_gray><aqua>大厅</aqua><dark_gray>」</dark_gray> '
 
   # ---- TalkBubbles (Fabric client mod) integration ----
   # When enabled, the plugin emits a 'talkbubbles:bubble' plugin message for
